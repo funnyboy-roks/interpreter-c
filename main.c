@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 #define _PRINT_MSG(prefix, ...) do {              \
     printf(prefix" %s:%d ", __FILE__, __LINE__);  \
@@ -22,6 +23,8 @@ typedef enum {
     TOK_MINUS,
     TOK_NUMBER,
     TOK_IDENT,
+    TOK_STRING,
+    _TOK_COUNT,
 } TokenType;
 
 char *names[] = {
@@ -30,7 +33,10 @@ char *names[] = {
     [TOK_MINUS] = "MINUS",
     [TOK_NUMBER] = "NUMBER",
     [TOK_IDENT] = "IDENT",
+    [TOK_STRING] = "STRING",
 };
+
+static_assert(sizeof(names)/sizeof(*names) == _TOK_COUNT, "Not every token is named");
 
 typedef union {
     int number_value;
@@ -97,13 +103,53 @@ int take_num(FILE *f)
     return out;
 }
 
+char *take_string(FILE *f, bool single_quote) {
+    size_t cap = 1024;
+    size_t len = 0;
+    char *buf = malloc(cap);
+
+    bool escaping = false;
+    char c;
+    char target_quote = single_quote ? '\'' : '"';
+    while ((c = take_char(f)) != target_quote || escaping) {
+        if (escaping) {
+            switch (c) {
+                case 'n': c = '\n'; break;
+                case 't': c = '\t'; break;
+            }
+        }
+
+        if (escaping || c != '\\') {
+            if (len >= cap - 1) buf = realloc(buf, cap *= 2);
+            buf[len++] = c;
+            escaping = false;
+        } else {
+            escaping = true;
+            continue;
+        }
+    }
+
+    buf[len] = '\0';
+    return buf;
+}
+
 Token next_token(FILE *f)
 {
+    char c;
     for (;;) {
-        char c = take_char(f);
-        switch (c) {
+        switch (c = take_char(f)) {
             case '+': return (Token){ TOK_PLUS };
             case '-': return (Token){ TOK_MINUS };
+            case '\'':
+            case '"': {
+                char *str = take_string(f, c == '\'');
+                return (Token) {
+                    .type = TOK_STRING,
+                    .value = (TokenValue) {
+                        .string_value = str
+                    },
+                };
+            } break;
         }
         
         if (isspace(c)) continue;
@@ -141,6 +187,9 @@ void print_tok(Token tok)
             break;
         case TOK_IDENT:
             printf("%s", tok.value.string_value);
+            break;
+        case TOK_STRING:
+            printf("\"%s\"", tok.value.string_value);
             break;
         case TOK_PLUS:
         case TOK_MINUS:
