@@ -21,18 +21,36 @@ typedef enum {
     TOK_EOF = 0,
     TOK_PLUS,
     TOK_MINUS,
+    TOK_LPAREN,
+    TOK_RPAREN,
+    TOK_LBRACE,
+    TOK_RBRACE,
+    TOK_LBRACKET,
+    TOK_RBRACKET,
+    TOK_SEMICOLON,
+    TOK_EQUALS,
     TOK_NUMBER,
     TOK_IDENT,
     TOK_STRING,
+    TOK_LET,
     _TOK_COUNT,
 } TokenType;
 
 char *names[] = {
     [TOK_EOF] = "EOF",
-    [TOK_PLUS] = "PLUS",
-    [TOK_MINUS] = "MINUS",
+    [TOK_PLUS] = "+",
+    [TOK_MINUS] = "-",
+    [TOK_LPAREN] = "(",
+    [TOK_RPAREN] = ")",
+    [TOK_LBRACE] = "{",
+    [TOK_RBRACE] = "}",
+    [TOK_LBRACKET] = "[",
+    [TOK_RBRACKET] = "]",
+    [TOK_SEMICOLON] = ";",
+    [TOK_EQUALS] = "=",
     [TOK_NUMBER] = "NUMBER",
     [TOK_IDENT] = "IDENT",
+    [TOK_LET] = "LET",
     [TOK_STRING] = "STRING",
 };
 
@@ -47,6 +65,11 @@ typedef struct {
     TokenType type;
     TokenValue value;
 } Token;
+
+TokenType ident_to_token_type(char *ident) {
+    if (!strcmp(ident, "let")) return TOK_LET;
+    return TOK_IDENT;
+}
 
 void remove_chars(char *s, char c) {
     int i = 0;
@@ -138,8 +161,26 @@ Token next_token(FILE *f)
     char c;
     for (;;) {
         switch (c = take_char(f)) {
-            case '+': return (Token){ TOK_PLUS };
-            case '-': return (Token){ TOK_MINUS };
+            case '+': return (Token){ TOK_PLUS, 0 };
+            case '-': return (Token){ TOK_MINUS, 0 };
+            case '(': return (Token){ TOK_LPAREN, 0 };
+            case ')': return (Token){ TOK_RPAREN, 0 };
+            case '{': return (Token){ TOK_LBRACE, 0 };
+            case '}': return (Token){ TOK_RBRACE, 0 };
+            case '[': return (Token){ TOK_LBRACKET, 0 };
+            case ']': return (Token){ TOK_RBRACKET, 0 };
+            case ';': return (Token){ TOK_SEMICOLON, 0 };
+            case '=': return (Token){ TOK_EQUALS, 0 };
+            case '/': {
+                if (peek_char(f) == '/') {
+                    take_char(f);
+                    char p;
+                    while ((p = peek_char(f)) != '\n' && p != '\0') {
+                        take_char(f);
+                    }
+                    continue;
+                }
+            } break;
             case '\'':
             case '"': {
                 char *str = take_string(f, c == '\'');
@@ -156,10 +197,11 @@ Token next_token(FILE *f)
         else if (isalpha(c) || c == '_') {
             ungetc(c, f);
             char *ident = take_ident(f);
+            TokenType type = ident_to_token_type(ident);
             return (Token) {
-                .type = TOK_IDENT,
+                .type = type,
                 .value = (TokenValue) {
-                    .string_value = ident
+                    .string_value = type == TOK_IDENT ? ident : 0
                 },
             };
         } else if (isdigit(c)) {
@@ -173,7 +215,9 @@ Token next_token(FILE *f)
             };
         }
 
-        return (Token){ 0 };
+        if (c == EOF) return (Token){ 0 };
+
+        PANIC("Unexpected token '%c'", c);
     }
 }
 
